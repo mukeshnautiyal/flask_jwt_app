@@ -8,7 +8,6 @@ def generate_jwt_token(content):
     
     
 def validate_user(email, password):
-    #print(email,len(email))
     #current_user = db_read("""SELECT * FROM users WHERE email = %s""", (email,))
     #print(len(email))
     if len(email) >= 1:

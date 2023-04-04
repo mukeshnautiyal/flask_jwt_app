@@ -6,17 +6,23 @@ from utils import validate_user,JWT_SECRET_KEY
 from functools import wraps
 import jwt
 from flask import current_app
+import json
+from flask import Flask, render_template, request, redirect, url_for, session
+from flask_mysqldb import MySQL
+import MySQLdb.cursors
+import re
+import models
+from db import app
 
-app = Flask(__name__)
-
-app.config['MYSQL_HOST'] = 'localhost'
-app.config['MYSQL_USER'] = 'root'
-app.config['MYSQL_PASSWORD'] = ''
-app.config['MYSQL_DB'] = 'jwtauth_flaskapp'
+#app = Flask(__name__)
+#app.config['MYSQL_HOST'] = 'localhost'
+#app.config['MYSQL_USER'] = 'root'
+#app.config['MYSQL_PASSWORD'] = ''
+#app.config['MYSQL_DB'] = 'jwtauth_flaskapp'
 
 @app.route('/')
 def hello():
-    return "Hello, World!"
+    return "Hello, Flask welcome in the flask app!"
     
 if __name__ == "__main__":
     app.run()
@@ -25,26 +31,11 @@ if __name__ == "__main__":
 #create table course_instructor_category(id int(11) not null  auto_increment, name varchar(100));
 #create table course(id int(11) NOT NULL AUTO_INCREMENT PRIMARY KEY, name varchar(100));
 #create table ta(id int(11) NOT NULL AUTO_INCREMENT PRIMARY KEY, native_english_speaker int(1), course_instructor int(11), course int(11), semester int(1), class_size int(11),performance_score int(1))
-
-
-# Store this code in 'app.py' file
-from flask import Flask, render_template, request, redirect, url_for, session
-from flask_mysqldb import MySQL
-import MySQLdb.cursors
-import re
-import models
-
-
-app = Flask(__name__)
-
-
-app.secret_key = 'your secret key'
-
-
-app.config['MYSQL_HOST'] = 'localhost'
-app.config['MYSQL_USER'] = 'root'
-app.config['MYSQL_PASSWORD'] = ''
-app.config['MYSQL_DB'] = 'jwtauth_flaskapp'
+app.secret_key = 'mukeshnuatiyal'
+#app.config['MYSQL_HOST'] = 'localhost'
+#app.config['MYSQL_USER'] = 'root'
+#app.config['MYSQL_PASSWORD'] = ''
+#app.config['MYSQL_DB'] = 'jwtauth_flaskapp'
 
 
 mysql = MySQL(app)
@@ -61,29 +52,29 @@ def token_required(f):
                 "data": None,
                 "error": "Unauthorized"
             }, 401
+        current_user = ""
         try:
-            print(token)
             data=jwt.decode(token[0], JWT_SECRET_KEY, algorithms=["HS256"])
-            print(data)
-            current_user=models.User().get_by_id(data["user_id"])
+            cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+            cursor.execute('SELECT * FROM users WHERE id = % s', (data["id"], ))
+            current_user = cursor.fetchone()
             if current_user is None:
                 return {
                 "message": "Invalid Authentication token!",
                 "data": None,
                 "error": "Unauthorized"
             }, 401
-            if not current_user["active"]:
-                abort(403)
         except Exception as e:
             return {
                 "message": "Something went wrong",
                 "data": None,
                 "error": str(e)
             }, 500
+        
+        return f(*args, **kwargs)
+    return decorated 
 
-        return f(current_user, *args, **kwargs)
-
-    return decorated    
+    
 @app.route('/')
 @app.route('/login', methods =['GET', 'POST'])
 def login():
@@ -189,24 +180,27 @@ if __name__ == "__main__":
 @app.route('/auth/login', methods =['POST'])
 def loginAPI():
     msg = ''
-    data = request.data
-    import json
-    data1 = json.loads(data)
-    username = data1['username']
-    password = data1['password']
-    cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
-    cursor.execute('SELECT * FROM users WHERE username = % s AND password = % s', (username, password, ))
-    user = cursor.fetchone()
-    if user:
-        session['loggedin'] = True
-        session['id'] = user['id']
-        session['username'] = user['username']
-        msg = 'Logged in successfully !'
-        user_token = validate_user(user, password)
-        return {"status":"200","message":"User Details successfully displaying","data":{"token":user_token,"username":user['username'],"email":user['username']}}
-    else:
-        msg = 'Incorrect username / password !'
-    return {'status':500, "msg": msg}
+    try:
+        data = request.data
+        data1 = json.loads(data)
+        username = data1['username']
+        password = data1['password']
+        cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+        cursor.execute('SELECT * FROM users WHERE username = % s AND password = % s', (username, password, ))
+        user = cursor.fetchone()
+        if user:
+            session['loggedin'] = True
+            session['id'] = user['id']
+            session['username'] = user['username']
+            msg = 'Logged in successfully !'
+            user_token = validate_user(user, password)
+            return {"status":"200","message":"User Details successfully displaying","data":{"token":user_token,"username":user['username'],"email":user['username']}}
+        else:
+            msg = 'Incorrect username / password !'
+        return {'status':500, "msg": msg}
+    except e as Exception:
+        msg = str(e)
+        return {"status":"500","message":msg,"data":None}
     
     
    
@@ -214,62 +208,74 @@ def loginAPI():
 @token_required 
 def ViewDetails():
     msg = ''
-    cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
-    cursor.execute('SELECT * FROM ta')
-    ta = cursor.fetchall()
-    print(ta)
-    if ta:
-        data = ta
-        return {"status":"200","message":"Details successfully displaying","data":data}
-    else:
-        msg = 'Incorrect username / password !'
-    return {'status':500, "msg": msg}
+    try:
+        cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+        cursor.execute('SELECT * FROM ta')
+        ta = cursor.fetchall()
+        if ta:
+            data = ta
+            return {"status":"200","message":"Details successfully displaying","data":data}
+        else:
+            msg = 'Incorrect username / password !'
+        return {'status':500, "msg": msg}
+    except e as Exception:
+        msg = str(e)
+        return {"status":"500","message":msg,"data":None}
     
     
-@app.route('/auth/create', methods =['GET'])
+@app.route('/auth/create', methods =['POST'])
 @token_required 
 def Viewcreate():
     msg = ''
-    cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
-    cursor.execute('SELECT * FROM ta')
-    ta = cursor.fetchall()
-    print(ta)
-    if ta:
-        data = ta
-        return {"status":"200","message":"Details successfully displaying","data":data}
-    else:
-        msg = 'Incorrect username / password !'
-    return {'status':500, "msg": msg}
+    data = request.data
+    data1 = json.loads(data)
+    native_english_speaker = data1['native_english_speaker']
+    course_instructor = data1['course_instructor']
+    course = data1['course']
+    semester = data1['semester']
+    class_size = data1['class_size']
+    performance_score = data1['performance_score']
+    try:
+        cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+        cursor.execute('INSERT INTO ta VALUES (NULL,% s, % s, % s, % s, % s, % s)', (native_english_speaker, course_instructor, course,semester,class_size,performance_score, ))
+        mysql.connection.commit()
+        return {"status":"200","message":"Details successfully created","data":None}
+    except e as Exception:
+        msg = str(e)
+        return {"status":"500","message":msg,"data":None}
     
-@app.route('/auth/update', methods =['GET'])
+@app.route('/auth/update/<id>', methods =['PUT'])
 @token_required 
-def ViewUpdate():
+def ViewUpdate(id):
     msg = ''
-    cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
-    cursor.execute('SELECT * FROM ta')
-    ta = cursor.fetchall()
-    print(ta)
-    if ta:
-        data = ta
-        return {"status":"200","message":"Details successfully displaying","data":data}
-    else:
-        msg = 'Incorrect username / password !'
-    return {'status':500, "msg": msg}
+    data = request.data
+    data1 = json.loads(data)
+    native_english_speaker = data1['native_english_speaker']
+    course_instructor = data1['course_instructor']
+    course = data1['course']
+    semester = data1['semester']
+    class_size = data1['class_size']
+    performance_score = data1['performance_score']
+    try:
+        cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+        cursor.execute('UPDATE ta SET native_english_speaker =% s, course_instructor =% s, course =% s, semester =% s, class_size =% s, performance_score =% s WHERE id =% s', (native_english_speaker, course_instructor, course,semester,class_size,performance_score, (id, ), ))
+        mysql.connection.commit()
+        return {"status":"200","message":"Details successfully updated","data":None}
+    except Exception as e:
+        msg = str(e)
+        return {"status":"500","message":msg,"data":None}
     
     
-@app.route('/auth/delete', methods =['GET'])
+@app.route('/auth/delete/<id>', methods =['DELETE'])
 @token_required 
-def ViewDelete():
-    msg = ''
-    cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
-    cursor.execute('SELECT * FROM ta')
-    ta = cursor.fetchall()
-    print(ta)
-    if ta:
-        data = ta
-        return {"status":"200","message":"Details successfully displaying","data":data}
-    else:
-        msg = 'Incorrect username / password !'
-    return {'status':500, "msg": msg}
+def ViewDelete(id):
+    try:
+        cursor = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+        cursor.execute('DELETE FROM ta where id= %s',(id,))
+        mysql.connection.commit()
+        return {"status":"200","message":"Records removed successfully","data":None}
+    except Exception as e:
+        msg = str(e)
+        return {"status":"500","message":msg,"data":None}
     
     
